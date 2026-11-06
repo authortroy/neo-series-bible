@@ -3,6 +3,8 @@
 // through the IPC handlers below (see preload.js for the exposed API).
 
 const { app, BrowserWindow, ipcMain, dialog, Menu, MenuItem, utilityProcess, screen } = require('electron');
+// The Plot Dude's Series Bible build of NEO (see SERIES-BIBLE.md)
+const SERIES_BIBLE_EDITION = true;
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -3441,6 +3443,9 @@ function getUpdater() {
   // (electron-builder's portable launcher sets PORTABLE_EXECUTABLE_FILE: there
   // the updater would install the setup program on quit, #479)
   if (updater || !app.isPackaged || process.env.PORTABLE_EXECUTABLE_FILE) return updater;
+  // SERIES BIBLE EDITION: never install Hugh's release over this build. Help →
+  // Check for Update still says when a newer NEO is out (time to update the fork).
+  if (SERIES_BIBLE_EDITION) return null;
   const { autoUpdater } = require('electron-updater');
   autoUpdater.logger = null;
   autoUpdater.autoDownload = true;       // found it? fetch it — nobody should have to ask
@@ -3557,6 +3562,15 @@ ipcMain.handle('update:openRelease', () => {
 
 // a trial (npm run try) keeps its settings apart from the real NEO's
 if (TRY_DIR) app.setPath('userData', path.join(TRY_DIR, 'settings'));
+// SERIES BIBLE EDITION: this build has its own app id and name (so NEO's own
+// updates never replace it), but keeps NEO's settings folder: the same
+// library, and the single-instance lock below then stops this build and
+// plain NEO from having the library open at the same time. Only when nothing
+// has chosen another folder already (the tests use a throwaway one).
+else if (typeof app.setPath === 'function' && typeof app.getName === 'function'
+  && app.getPath('userData') === path.join(app.getPath('appData'), app.getName())) {
+  app.setPath('userData', path.join(app.getPath('appData'), 'NEO'));
+}
 
 // Two copies of NEO editing the same library is how words get eaten
 if (!app.requestSingleInstanceLock()) {

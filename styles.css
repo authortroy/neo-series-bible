@@ -2387,3 +2387,90 @@ html:lang(ko) :is(#aux-paper h2, .pen-slot, .shelf-label, .shelf-bound-mark, .pt
   .side-cards-title, .side-card-head, .notes-part, .ns-label, #notes-up, #notes-outline b) {
   letter-spacing: 0.04em;
 }
+
+/* ================================================================== */
+/* SERIES BIBLE EDITION — the Series Bible's tabs and summaries        */
+/* (app.js SERIES BIBLE). The summary is the app's, never the writer's */
+/* note: set apart by a rule, a small label and a softer color.       */
+/* ================================================================== */
+.sb-summary { font-family: var(--body-font); line-height: 1.4; }
+.sb-label {
+  font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+  font-size: 0.72em; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
+  color: #8a7d62;
+}
+.sb-text { font-style: italic; }
+
+/* on a chapter's card: the writer's note keeps two lines at the top, the
+   summary gets the rest, under a dashed rule; a closed card says just
+   "Series Bible", an open one the whole label */
+#outline-board.sb-cards:not(.tiles):not(.script-board) .ob-card { height: calc(150px * var(--cz)); }
+#outline-board.sb-cards:not(.tiles) .ob-add { min-height: calc(150px * var(--cz)); }
+#outline-board.sb-cards .ob-cell.open .ob-card { height: auto; } /* an open card still grows to fit */
+.ob-card.has-bible .ob-text { flex: none; -webkit-line-clamp: 2; }
+.ob-bible {
+  flex: 1; min-height: 0; border-top: 1px dashed #d8cdb8; padding-top: 3px; color: #6f6a5e;
+  font-size: 0.92em; overflow: hidden;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3;
+}
+.ob-cell:not(.open) .ob-bible .sb-label { font-size: 0; letter-spacing: 0; }
+.ob-cell:not(.open) .ob-bible .sb-label::before {
+  content: attr(data-short); font-size: calc(9.5px * var(--cz)); letter-spacing: 0.06em;
+}
+.ob-cell.open .ob-bible { flex: none; -webkit-line-clamp: unset; display: block; overflow: visible; margin-top: 6px; }
+.ob-cell.open .ob-bible .sb-label { display: block; margin-bottom: 2px; }
+#outline-board.tiles .ob-bible { display: none; }
+
+/* in the outline's list: under the chapter's line, lined up with its text */
+.ol-bible {
+  margin: 2px 0 4px 36px; padding: 4px 0 4px 10px; border-left: 2px solid #e0d6c2;
+  color: #6f6a5e; font-size: calc(var(--editor-size, 17px) * 13.5 / 17 * var(--page-zoom, 1));
+}
+body.night .ol-bible { color: #8a8476; border-left-color: #3d3a35; }
+body.night .ol-bible .sb-label { color: #8f8062; }
+
+/* beside the page, while writing */
+.side-card-bible {
+  margin-top: 8px; padding-top: 6px; border-top: 1px dashed #3d3c36;
+  font-size: 12.5px; color: #a49f94;
+}
+.side-card-bible .sb-label { display: block; margin-bottom: 2px; color: #8f8670; }
+
+/* the three tabs: entries on the paper, like Darlings */
+.tab.bible-tab { color: #a99d80; }
+.tab.bible-tab.active { color: inherit; }
+#bible-list { font-family: Georgia, serif; }
+.sb-from {
+  font-family: -apple-system, BlinkMacSystemFont, sans-serif; font-size: 11px; color: #9a9486;
+  text-align: center; margin: -24px 0 28px;
+}
+.sb-entry {
+  border: 1px solid #e3ddcf; border-left: 3px solid #b9a77f; border-radius: 4px;
+  padding: 14px 18px; margin-bottom: 16px; font-size: 15px; line-height: 1.55;
+}
+.sb-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.sb-name { font-size: 1.12em; font-weight: 700; }
+.sb-chip {
+  font-family: -apple-system, BlinkMacSystemFont, sans-serif; font-size: 10.5px; letter-spacing: 0.08em;
+  text-transform: uppercase; color: #8a7d62; border: 1px solid #d9cfb9; border-radius: 9px; padding: 1px 8px;
+}
+.sb-desc { margin-top: 6px; }
+.sb-field { display: flex; gap: 12px; margin-top: 6px; font-size: 14px; }
+.sb-k {
+  flex: none; width: 108px; font-family: -apple-system, BlinkMacSystemFont, sans-serif; font-size: 11px;
+  letter-spacing: 0.05em; text-transform: uppercase; color: #9a9486; padding-top: 3px;
+}
+.sb-v { flex: 1; min-width: 0; }
+.sb-group {
+  font-family: -apple-system, BlinkMacSystemFont, sans-serif; font-size: 12px; font-weight: 600;
+  letter-spacing: 0.12em; text-transform: uppercase; color: #8a7d62; margin: 26px 0 10px;
+}
+.sb-group:first-of-type { margin-top: 0; }
+.sb-entry.sb-event .sb-name { font-size: 1em; }
+body.night .sb-entry { border-color: #3a3835; border-left-color: #6f6550; }
+body.night .sb-chip { border-color: #4a463e; color: #a4977a; }
+body.night .sb-k, body.night .sb-from { color: #7d7768; }
+body.night .sb-group { color: #a4977a; }
+@media (max-width: 640px) { .sb-field { flex-direction: column; gap: 0; } .sb-k { width: auto; } }
+body.light .side-card-bible { color: #6f6a5e; border-top-color: #e2d9c3; }
+body.light .side-card-bible .sb-label { color: #8a7d62; }

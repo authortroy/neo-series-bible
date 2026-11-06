@@ -109,6 +109,8 @@
         <div id="aux-editor" contenteditable="true" spellcheck="false" role="textbox" aria-multiline="true" aria-labelledby="aux-title"></div>
         <div id="outline-list" hidden></div>
         <div id="darlings-list" hidden></div>
+        <!-- SERIES BIBLE EDITION: Characters / Locations / Events, read from series-bible.json -->
+        <div id="bible-list" hidden></div>
       </div>
     </main>
 
@@ -120,6 +122,9 @@
         <div class="tab" role="tab" tabindex="0" aria-selected="false" data-tab="notes" data-i18n>Notes</div>
         <div class="tab" role="tab" tabindex="0" aria-selected="false" data-tab="outline" data-i18n>Outline</div>
         <div class="tab darlings" role="tab" tabindex="0" aria-selected="false" data-tab="darlings" data-i18n data-i18n-title title="Drag any selection here. It's saved, not gone.">Darlings</div>
+        <div class="tab bible-tab" role="tab" tabindex="0" aria-selected="false" data-tab="characters" data-i18n hidden>Characters</div>
+        <div class="tab bible-tab" role="tab" tabindex="0" aria-selected="false" data-tab="locations" data-i18n hidden>Locations</div>
+        <div class="tab bible-tab" role="tab" tabindex="0" aria-selected="false" data-tab="events" data-i18n hidden>Events</div>
       </div>
       <div id="counters">
         <span id="goal-counter" role="button" tabindex="0" data-i18n-title title="Today's words — click for goals, sprints, and your progress chart"></span>

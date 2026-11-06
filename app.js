@@ -202,6 +202,9 @@ let diskStamps = {};         // chapterId -> file mtime as of the last look at t
 let writing = {};            // chapterId -> chapter writes still on their way to disk
 let stickies = [];           // [{id, chapterId, text, resolved}]
 let darlings = [];           // [{id, html, text, chapterId, chapterLabel, date}]
+let bible = null;            // SERIES BIBLE EDITION: series-bible.json, or null (see SERIES BIBLE)
+const BIBLE_TABS = ['characters', 'locations', 'events'];
+const BIBLE_TITLES = { characters: 'Characters', locations: 'Locations', events: 'Events' };
 let currentTab = 'manuscript';
 let currentChapterId = null; // chapter the caret/scroll is in
 let wordMode = 'book';       // 'book' | 'chapter'
@@ -2527,6 +2530,7 @@ async function openBook(bookId) {
   }
   const sideStickies = await window.neo.readJSON(bookId, 'stickies', []);
   const sideDarlings = await window.neo.readJSON(bookId, 'darlings', []);
+  const sideBible = await readBibleFile(bookId);
   if (gen !== openGeneration) return;
   tabPlaces = {}; // a fresh book starts with fresh places
   book = meta;
@@ -2542,6 +2546,7 @@ async function openBook(bookId) {
   savedMetaSig = metaSig(book); // what disk holds; NEO's own defaults don't count as edits
   stickies = sideStickies;
   darlings = sideDarlings;
+  bible = sideBible;
   sidecarBase[bookId + '/stickies'] = JSON.stringify(stickies);
   sidecarBase[bookId + '/darlings'] = JSON.stringify(darlings);
 
@@ -2556,6 +2561,7 @@ async function openBook(bookId) {
   $('#tp-author').textContent = book.author || t('Anonymous');
   $$('.tab[data-tab="notes"]')[0].textContent = tabName('notes');
   $$('.tab[data-tab="outline"]')[0].textContent = tabName('outline');
+  showBibleTabs();
   spEditorMode(); // a script, or a book
 
   renderChapters();
@@ -2584,7 +2590,7 @@ async function openBook(bookId) {
         vimRest();
         // closed on the Outline, Notes or Darlings: it opens there again, at
         // the same scroll (the manuscript keeps its own place underneath)
-        if (['outline', 'notes', 'darlings'].includes(pos.tab) && book && book.id === bookId) {
+        if ((['outline', 'notes', 'darlings'].includes(pos.tab) || (bibleOn() && BIBLE_TABS.includes(pos.tab))) && book && book.id === bookId) {
           tabPlaces[pos.tab] = { scroll: pos.tabScroll || 0 };
           switchTab(pos.tab);
         }
@@ -4958,6 +4964,8 @@ function goToTab(name) {
   switchTab(name);
 }
 const TAB_ORDER = ['manuscript', 'notes', 'outline', 'darlings'];
+// (the Series Bible's tabs join the round when the book has a bible)
+const tabOrder = () => (bibleOn() ? TAB_ORDER.concat(BIBLE_TABS) : TAB_ORDER);
 window.addEventListener('keydown', (e) => {
   if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
   const cmd = IS_POCKET ? (e.metaKey !== e.ctrlKey) : (IS_MAC ? e.metaKey : e.ctrlKey);
@@ -4965,8 +4973,9 @@ window.addEventListener('keydown', (e) => {
   if ($('#editor-view').hidden || document.querySelector('.modal-backdrop:not([hidden])')) return;
   e.preventDefault();
   e.stopPropagation();
-  const step = e.key === 'ArrowRight' ? 1 : TAB_ORDER.length - 1;
-  goToTab(TAB_ORDER[(TAB_ORDER.indexOf(currentTab) + step) % TAB_ORDER.length]);
+  const order = tabOrder();
+  const step = e.key === 'ArrowRight' ? 1 : order.length - 1;
+  goToTab(order[(order.indexOf(currentTab) + step) % order.length]);
 }, true);
 
 // Titles, outline lines, notes and shelf names get the same typography as
@@ -8787,6 +8796,7 @@ function switchTab(name) {
   auxEditor.hidden = true;
   dList.hidden = true;
   oList.hidden = true;
+  $('#bible-list').hidden = true;
   // the outline's cards, their List/Cards switch and their hint belong to the Outline alone
   for (const id of ['#outline-board', '#outline-views', '#outline-board-hint']) { const el = $(id); if (el) el.hidden = true; }
 
@@ -8796,6 +8806,12 @@ function switchTab(name) {
     dList.hidden = false;
     renderDarlings();
     renderSnapList();
+    returnTo();
+    findHere();
+  } else if (BIBLE_TABS.includes(name)) {
+    $('#aux-title').textContent = t(BIBLE_TITLES[name]);
+    $('#bible-list').hidden = false;
+    renderBible(name);
     returnTo();
     findHere();
   } else if (name === 'outline') {
@@ -8836,6 +8852,219 @@ function switchTab(name) {
       toast(t('NEO couldn’t read this page from disk'));
     });
   }
+}
+
+/* ================================================================== */
+/*  SERIES BIBLE                                                       */
+/*  SERIES BIBLE EDITION. The Plot Dude's Series Bible app keeps a     */
+/*  file in the book's folder, series-bible.json: the book's          */
+/*  characters, locations and plot events, and an AI summary of each   */
+/*  chapter keyed by chapter id. NEO only reads it. When it's there,   */
+/*  three more tabs show the bible (view only — it's edited in the     */
+/*  Series Bible app), and each chapter's outline card, line and side  */
+/*  card carries "Series Bible Summary of What You Wrote" under the    */
+/*  writer's own note, which it never touches. Re-read on every        */
+/*  refreshFromDisk (focus, and every 30 s), like another device's     */
+/*  edits.                                                             */
+/* ================================================================== */
+
+const BIBLE_FORMAT = 'plotdude-series-bible';
+const BIBLE_LABEL = 'Series Bible Summary of What You Wrote';
+const bibleOn = () => !!(book && bible);
+
+// the file, or null: none, not ours, unreadable, or still in iCloud (the
+// tabs simply wait for the next look)
+async function readBibleFile(bookId) {
+  try {
+    const j = await window.neo.readJSON(bookId, 'series-bible', null);
+    return j && typeof j === 'object' && j.format === BIBLE_FORMAT ? j : null;
+  } catch {
+    return null;
+  }
+}
+
+let bibleLoading = false;
+async function loadBible(bookId) {
+  if (bibleLoading) return;
+  bibleLoading = true;
+  try {
+    const next = await readBibleFile(bookId);
+    if (!book || book.id !== bookId) return;
+    if (JSON.stringify(next) === JSON.stringify(bible)) return;
+    bible = next;
+    bibleChanged();
+  } finally {
+    bibleLoading = false;
+  }
+}
+
+// a new bible (or none): the tabs, and wherever its summaries show
+function bibleChanged() {
+  showBibleTabs();
+  if (!book) return;
+  if (BIBLE_TABS.includes(currentTab)) {
+    if (!bible) switchTab('manuscript');
+    else {
+      const keep = $('#paper-scroll').scrollTop;
+      renderBible(currentTab);
+      $('#paper-scroll').scrollTop = keep;
+    }
+  }
+  // (an open card or a line being typed on is left alone; it redraws on close)
+  if (currentTab === 'outline' && !cardEditor && !($('#outline-list').contains(document.activeElement))) {
+    const keep = $('#paper-scroll').scrollTop;
+    renderOutline();
+    $('#paper-scroll').scrollTop = keep;
+  }
+  sideCardsUpdate(true);
+}
+
+function showBibleTabs() {
+  for (const kind of BIBLE_TABS) {
+    const tab = $(`.tab[data-tab="${kind}"]`);
+    if (tab) tab.hidden = !bibleOn();
+  }
+}
+
+function bibleSummary(chId) {
+  const ch = bibleOn() && bible.chapters && bible.chapters[chId];
+  return ch && typeof ch.summary === 'string' ? ch.summary.trim() : '';
+}
+
+// the summary, labelled, for a card, an outline line or a side card; null when there's none
+function bibleSummaryEl(chId, cls) {
+  const text = bibleSummary(chId);
+  if (!text) return null;
+  const el = document.createElement('div');
+  el.className = 'sb-summary ' + cls;
+  el.dataset.ch = chId;
+  const label = document.createElement('span');
+  label.className = 'sb-label';
+  label.textContent = t(BIBLE_LABEL);
+  label.dataset.short = t('Series Bible'); // a closed outline card has room for this much
+  const body = document.createElement('span');
+  body.className = 'sb-text';
+  body.textContent = text;
+  el.append(label, ' ', body);
+  el.title = t(BIBLE_LABEL) + ' — ' + t('from the Series Bible app; your own note above is never changed');
+  return el;
+}
+
+// one field of an entry: "Label  text", left out when empty
+function bibleField(parent, label, value) {
+  const v = String(value || '').trim();
+  if (!v) return;
+  const row = document.createElement('div');
+  row.className = 'sb-field';
+  const k = document.createElement('span');
+  k.className = 'sb-k';
+  k.textContent = t(label);
+  const val = document.createElement('span');
+  val.className = 'sb-v sb-find';
+  val.textContent = v;
+  row.append(k, val);
+  parent.appendChild(row);
+}
+
+function bibleEntry(name, chip) {
+  const el = document.createElement('div');
+  el.className = 'sb-entry';
+  const head = document.createElement('div');
+  head.className = 'sb-head';
+  const n = document.createElement('span');
+  n.className = 'sb-name sb-find';
+  n.textContent = name || t('(no name)');
+  head.appendChild(n);
+  if (chip) {
+    const c = document.createElement('span');
+    c.className = 'sb-chip';
+    c.textContent = chip;
+    head.appendChild(c);
+  }
+  el.appendChild(head);
+  return el;
+}
+
+function bibleDescription(el, text) {
+  const v = String(text || '').trim();
+  if (!v) return;
+  const d = document.createElement('div');
+  d.className = 'sb-desc sb-find';
+  d.textContent = v;
+  el.appendChild(d);
+}
+
+function renderBible(kind) {
+  const wrap = $('#bible-list');
+  wrap.innerHTML = '';
+  if (!bible) return;
+  const from = document.createElement('div');
+  from.className = 'sb-from';
+  const when = bible.updated ? fmtBibleDate(bible.updated) : '';
+  from.textContent = when
+    ? t('From the Series Bible · updated {date} · view only: edit it in the Series Bible app', { date: when })
+    : t('From the Series Bible · view only: edit it in the Series Bible app');
+  wrap.appendChild(from);
+
+  const list = Array.isArray(bible[kind]) ? bible[kind] : [];
+  if (!list.length) {
+    const empty = document.createElement('div');
+    empty.className = 'darlings-empty';
+    empty.textContent = kind === 'characters' ? t('No characters in the bible for this book yet. A Deep Scan in the Series Bible app finds them.')
+      : kind === 'locations' ? t('No locations in the bible for this book yet. A Deep Scan in the Series Bible app finds them.')
+      : t('No plot events in the bible for this book yet. A Deep Scan in the Series Bible app finds them.');
+    wrap.appendChild(empty);
+    return;
+  }
+
+  if (kind === 'characters') {
+    for (const c of list) {
+      const el = bibleEntry(c.name, c.role);
+      bibleDescription(el, c.description);
+      bibleField(el, 'Looks', c.physical);
+      bibleField(el, 'Personality', c.personality);
+      bibleField(el, 'Backstory', c.backstory);
+      bibleField(el, 'Relationships', c.relationships);
+      bibleField(el, 'First appears', c.firstAppearance);
+      bibleField(el, 'Notes', c.notes);
+      wrap.appendChild(el);
+    }
+  } else if (kind === 'locations') {
+    for (const l of list) {
+      const el = bibleEntry(l.name, l.type);
+      bibleDescription(el, l.description);
+      bibleField(el, 'Significance', l.significance);
+      bibleField(el, 'First appears', l.firstAppearance);
+      bibleField(el, 'Notes', l.notes);
+      wrap.appendChild(el);
+    }
+  } else {
+    // events, in story order, under the chapter each one names
+    let current = null;
+    for (const ev of list) {
+      const ch = String(ev.chapter || '').trim();
+      if (ch !== current) {
+        current = ch;
+        const h = document.createElement('div');
+        h.className = 'sb-group sb-find';
+        h.textContent = ch || t('No chapter given');
+        wrap.appendChild(h);
+      }
+      const el = bibleEntry(ev.title, '');
+      el.classList.add('sb-event');
+      bibleDescription(el, ev.description);
+      bibleField(el, 'Who', ev.characters);
+      bibleField(el, 'Where', ev.location);
+      bibleField(el, 'Why it matters', ev.significance);
+      wrap.appendChild(el);
+    }
+  }
+}
+
+function fmtBibleDate(iso) {
+  const d = new Date(iso);
+  if (isNaN(d)) return '';
+  return d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 }
 
 /* ================================================================== */
@@ -8885,6 +9114,8 @@ function renderOutline(focusTarget) {
     if (!STORY_KINDS.includes(kind)) return;
     wrap.appendChild(outlineLine('chapter', chId, null, i, chapterMark(chId),
       book.chapterNotes[chId] || ''));
+    const summary = bibleSummaryEl(chId, 'ol-bible');
+    if (summary) wrap.appendChild(summary);
     (book.sectionNotes[chId] || []).forEach((sec, j) => {
       wrap.appendChild(outlineLine('section', chId, sec.id, j, secLetter(j), sec.text));
     });
@@ -9670,6 +9901,9 @@ function renderBoard() {
       board.appendChild(cell);
     });
   }
+  // cards that carry a Series Bible summary need a little more height (all of
+  // them, so the rows stay even)
+  board.classList.toggle('sb-cards', !!board.querySelector('.ob-bible'));
   boardAddCard(board);
   boardHint(board);
 }
@@ -9778,7 +10012,9 @@ function chapterCard(chId, opening, solo) {
   card.append(head, text);
   cell.dataset.excerpt = opening && opening.first ? quoted(opening.first) : '';
   fillCardText(cell, (book.chapterNotes || {})[chId] || '');
-  cell.setAttribute('aria-label', (solo ? t('The story') : chapterName(chId)) + '. ' + text.textContent);
+  const summary = bibleSummaryEl(chId, 'ob-bible');
+  if (summary) { card.appendChild(summary); card.classList.add('has-bible'); }
+  cell.setAttribute('aria-label', (solo ? t('The story') : chapterName(chId)) + '. ' + text.textContent + (summary ? '. ' + summary.textContent : ''));
   return cell;
 }
 
@@ -11808,6 +12044,7 @@ function sideCardsUpdate(force) {
       }
     });
     card.append(head, ta);
+    if (c.kind === 'chapter') { const summary = bibleSummaryEl(c.id, 'side-card-bible'); if (summary) card.appendChild(summary); }
     box.appendChild(card);
     requestAnimationFrame(fit);
   }
@@ -13173,6 +13410,7 @@ async function refreshFromDisk() {
       }
       return;
     }
+    loadBible(book.id); // the Series Bible app writes series-bible.json while NEO is open
     const bookId = book.id;
     if (window.neo.refreshBook) await window.neo.refreshBook(bookId);
     const meta = await window.neo.readBookMeta(bookId);
@@ -13401,6 +13639,8 @@ async function backToShelf() {
   flushAllSaves();
   tabPlaces = {};
   book = null;
+  bible = null;
+  showBibleTabs();
   showWindowTitle();
   forgetSnapshots();
   sideCardsKey = '';
@@ -14016,6 +14256,7 @@ function searchRoots() {
   if (currentTab === 'manuscript') return book.chapterOrder.map((chId) => document.querySelector(`.chapter[data-id="${chId}"] .chapter-body`));
   if (currentTab === 'outline') return boardShowing() ? $$('#outline-board .ob-text, #loose-list .ob-text') : $$('#outline-list .ol-text');
   if (currentTab === 'darlings') return $$('#darlings-list .darling > :first-child');
+  if (BIBLE_TABS.includes(currentTab)) return $$('#bible-list .sb-find');
   return [$('#aux-editor')];
 }
 
@@ -18265,7 +18506,9 @@ $$('.tab').forEach((tab, i, all) => {
     if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); tab.click(); }
     if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
       e.preventDefault();
-      all[(i + (e.key === 'ArrowRight' ? 1 : all.length - 1)) % all.length].focus();
+      const shown = all.filter((x) => !x.hidden);
+      const at = shown.indexOf(tab);
+      shown[(at + (e.key === 'ArrowRight' ? 1 : shown.length - 1)) % shown.length].focus();
     }
   });
 });
