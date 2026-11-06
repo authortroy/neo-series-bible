@@ -61,21 +61,18 @@ describe('the portable .exe does not update itself', () => {
     assert.equal(res.latestVersion, '9.9.9');
   });
 
-  // SERIES BIBLE EDITION: an installed build never installs Hugh's release over
-  // itself (that would replace it with plain NEO). It still says a newer NEO is
-  // out, by the release page, with nothing to install.
-  test('an installed Series Bible build does not update itself from NEO\'s releases', async () => {
+  test('an installed build still updates itself', async () => {
     const pc = build();
-    assert.equal(pc.getUpdater(), null);
-    assert.equal(pc.seen.updaterLoaded, 0);
-    const res = await pc.check();
-    assert.equal(res.canInstall, false);
-    assert.equal(res.hasUpdate, true);
+    assert.equal(pc.getUpdater(), pc.autoUpdater);
+    assert.equal(pc.autoUpdater.autoInstallOnAppQuit, true);
+    assert.equal((await pc.check()).canInstall, true);
   });
 
-  test('Windows shutting down: with no updater there is nothing to hold (#490)', () => {
+  test('Windows shutting down leaves a downloaded update for the next quit (#490)', () => {
     const pc = build();
-    assert.doesNotThrow(() => pc.holdUpdateForShutdown());
+    assert.equal(pc.getUpdater(), pc.autoUpdater);
+    pc.holdUpdateForShutdown();
+    assert.equal(pc.autoUpdater.autoInstallOnAppQuit, false);
   });
 
   test('`npm start` (not packaged) still has no updater', () => {

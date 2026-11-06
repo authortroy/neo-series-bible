@@ -16,30 +16,11 @@
 
 name: Build NEO Pocket
 
+# SERIES BIBLE EDITION: Pocket isn't built from this fork automatically (no
+# keystore here, and its pre-releases would clutter the desktop releases).
+# Run it by hand from the Actions tab if that's ever wanted.
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'pocket/**'
-      - 'app.js'
-      - 'covers.js'
-      - 'styles.css'
-      - 'fonts/**'
-      - 'i18n.js'
-      - 'locales/**'
-      - 'main.js'
-      - 'scripts/pocket-www.js'
-      - '.github/workflows/pocket.yml'
-    tags:
-      - 'pocket-v*'
   workflow_dispatch: {}
-
-permissions:
-  contents: read
-
-concurrency:
-  group: pocket-build-${{ github.ref }}
-  cancel-in-progress: true
 
 jobs:
   android:

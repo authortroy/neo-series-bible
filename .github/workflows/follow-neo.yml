@@ -1,0 +1,121 @@
+# SERIES BIBLE EDITION: keeps NEO Series Bible on the newest NEO.
+#
+# Once a day (and whenever "Run workflow" is pressed on the Actions tab) it
+# looks at Hugh Howey's newest NEO release. If it's newer than the one this
+# fork is built on, it merges it, puts the fork's name and version back on
+# package.json (scripts/series-bible-identity.js), runs NEO's tests and the
+# Series Bible's, and, if everything passes, tags the release and starts the
+# build, which publishes it for installed copies to update from.
+#
+# If the merge needs a person (NEO changed the same lines this fork changed)
+# or a test fails, nothing is released: it opens an issue instead, which
+# GitHub emails to the repo's owner.
+
+name: Follow NEO releases
+
+on:
+  schedule:
+    - cron: '23 13 * * *'   # 6:23 AM in Boise (13:23 UTC)
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+  issues: write
+  actions: write
+
+concurrency:
+  group: follow-neo
+  cancel-in-progress: false
+
+jobs:
+  follow:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Newest NEO release
+        id: neo
+        run: |
+          tag=$(gh api repos/hughhowey/neo/releases/latest --jq .tag_name)
+          ver="${tag#v}"
+          ours=$(node -p "require('./package.json').seriesBible.neoVersion")
+          newer=$(node -e '
+            const [a, b] = process.argv.slice(1).map((v) => v.split(".").map(Number));
+            let r = 0; for (let i = 0; i < 3 && !r; i++) r = Math.sign((a[i] || 0) - (b[i] || 0));
+            console.log(r > 0 ? "yes" : "no");' "$ver" "$ours")
+          echo "NEO's newest: $ver. This fork is on NEO $ours. Newer: $newer"
+          { echo "tag=$tag"; echo "version=$ver"; echo "newer=$newer"; } >> "$GITHUB_OUTPUT"
+
+      - name: Merge it
+        id: merge
+        if: steps.neo.outputs.newer == 'yes'
+        env:
+          TAG: ${{ steps.neo.outputs.tag }}
+          VERSION: ${{ steps.neo.outputs.version }}
+        run: |
+          git config user.name "NEO Series Bible"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch --no-tags https://github.com/hughhowey/neo.git "refs/tags/$TAG:refs/neo/$TAG"
+          if ! git merge --no-ff --no-edit -m "Merge NEO $TAG" "refs/neo/$TAG"; then
+            # package.json and its lock always disagree on the version line;
+            # the identity script below puts the fork's lines back. Anything
+            # else needs a person.
+            others=$(git diff --name-only --diff-filter=U | grep -vxE 'package(-lock)?\.json' || true)
+            if [ -n "$others" ]; then
+              { echo "files<<EOF"; echo "$others"; echo "EOF"; } >> "$GITHUB_OUTPUT"
+              git merge --abort
+              echo "::error::NEO $TAG changed lines this fork also changed: $others"
+              exit 1
+            fi
+            git checkout --theirs package.json package-lock.json
+            git add package.json package-lock.json
+            git commit --no-edit
+          fi
+          node scripts/series-bible-identity.js --neo "$VERSION"
+          git add package.json package-lock.json
+          git commit -m "NEO Series Bible $(node -p "require('./package.json').version"), on NEO $VERSION" || true
+
+      - name: Test
+        if: steps.neo.outputs.newer == 'yes'
+        env:
+          ELECTRON_DISABLE_SANDBOX: '1'
+        run: |
+          npm ci
+          npm test
+          xvfb-run -a npm run test:series-bible
+
+      - name: Release
+        if: steps.neo.outputs.newer == 'yes'
+        run: |
+          v=$(node -p "require('./package.json').version")
+          git push origin HEAD:main
+          git tag "v$v"
+          git push origin "v$v"
+          # a tag pushed from here doesn't start the build by itself; ask for it
+          gh workflow run build.yml --ref "v$v"
+          echo "Building and publishing v$v"
+
+      - name: Ask for a hand
+        if: failure() && steps.neo.outputs.newer == 'yes'
+        env:
+          TAG: ${{ steps.neo.outputs.tag }}
+          FILES: ${{ steps.merge.outputs.files }}
+          RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          title="NEO $TAG needs a hand before NEO Series Bible can follow it"
+          if [ -n "$FILES" ]; then
+            why="NEO $TAG changed the same lines as the Series Bible edition in:"$'\n\n'"$(echo "$FILES" | sed 's/^/- /')"
+          else
+            why="NEO $TAG merged, but a test failed."
+          fi
+          body="$why"$'\n\n'"Nothing was released; installed copies stay on the version they have. Details: $RUN"$'\n\n'"Fix: merge NEO $TAG by hand (see SERIES-BIBLE.md), push, and tag the release, or ask Claude to."
+          n=$(gh issue list --state open --search "\"$title\" in:title" --json number --jq '.[0].number // empty')
+          if [ -n "$n" ]; then gh issue comment "$n" --body "Still stuck: $RUN"; else gh issue create --title "$title" --body "$body"; fi

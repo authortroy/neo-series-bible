@@ -3,8 +3,11 @@
 // through the IPC handlers below (see preload.js for the exposed API).
 
 const { app, BrowserWindow, ipcMain, dialog, Menu, MenuItem, utilityProcess, screen } = require('electron');
-// The Plot Dude's Series Bible build of NEO (see SERIES-BIBLE.md)
-const SERIES_BIBLE_EDITION = true;
+// SERIES BIBLE EDITION: The Plot Dude's Series Bible build of NEO (see
+// SERIES-BIBLE.md). It updates itself from its own releases, never NEO's:
+// electron-updater reads them from package.json's build.publish, and the
+// fallback and the release link below read the same repository.
+const RELEASES_REPO = 'authortroy/neo-series-bible';
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -3443,9 +3446,6 @@ function getUpdater() {
   // (electron-builder's portable launcher sets PORTABLE_EXECUTABLE_FILE: there
   // the updater would install the setup program on quit, #479)
   if (updater || !app.isPackaged || process.env.PORTABLE_EXECUTABLE_FILE) return updater;
-  // SERIES BIBLE EDITION: never install Hugh's release over this build. Help →
-  // Check for Update still says when a newer NEO is out (time to update the fork).
-  if (SERIES_BIBLE_EDITION) return null;
   const { autoUpdater } = require('electron-updater');
   autoUpdater.logger = null;
   autoUpdater.autoDownload = true;       // found it? fetch it — nobody should have to ask
@@ -3500,7 +3500,7 @@ function lookForUpdate() {
 
 // what's on GitHub, for the fallback path and the release link
 async function latestReleaseFromGitHub() {
-  const res = await fetch('https://api.github.com/repos/hughhowey/neo/releases/latest', {
+  const res = await fetch('https://api.github.com/repos/' + RELEASES_REPO + '/releases/latest', {
     headers: { 'User-Agent': 'NEO-App' }
   });
   if (!res.ok) throw new Error('GitHub API returned ' + res.status);
@@ -3675,7 +3675,7 @@ app.whenReady().then(() => {
     logError('startup', err);
     try {
       dialog.showErrorBox(t('NEO failed to start'),
-        t('Please report this at github.com/hughhowey/neo/issues:') + '\n\n' + String((err && err.stack) || err));
+        t('Please report this at github.com/{repo}/issues:', { repo: RELEASES_REPO }) + '\n\n' + String((err && err.stack) || err));
     } catch { /* nothing left to try */ }
   }
   app.on('activate', () => {
