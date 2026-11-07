@@ -57,6 +57,12 @@ function main(argv) {
   pkg.build.appId = 'com.plotdude.neo-seriesbible';
   pkg.build.productName = 'NEO Series Bible';
   pkg.build.publish = [RELEASES];
+  // Installer names without spaces: GitHub turns a space in an uploaded name
+  // into a dot, and the updater looks for the exact name in latest*.yml, so a
+  // spaced name ("NEO Series Bible-…") is one it could never download.
+  pkg.build.artifactName = 'NEO-Series-Bible-${version}-${arch}.${ext}';
+  pkg.build.nsis = { ...(pkg.build.nsis || {}), artifactName: 'NEO-Series-Bible-Setup-${version}.${ext}' };
+  pkg.build.portable = { ...(pkg.build.portable || {}), artifactName: 'NEO-Series-Bible-${version}-portable.${ext}' };
   write('package.json', pkg);
 
   const lockFile = path.join(ROOT, 'package-lock.json');

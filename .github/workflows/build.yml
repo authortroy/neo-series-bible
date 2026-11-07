@@ -202,9 +202,19 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
+          assets=$(gh release view "$GITHUB_REF_NAME" --json assets --jq '.assets[].name')
           for f in latest.yml latest-mac.yml; do
-            gh release view "$GITHUB_REF_NAME" --json assets --jq '.assets[].name' | grep -qx "$f" \
-              || { echo "::error::$f is missing from the release; not publishing"; exit 1; }
+            echo "$assets" | grep -qx "$f" || { echo "::error::$f is missing from the release; not publishing"; exit 1; }
+          done
+          # every file an update file names must be on the release under that
+          # exact name, or installed copies could never download it
+          mkdir -p yml && cd yml
+          for f in $(echo "$assets" | grep -E '^latest.*\.yml$'); do
+            gh release download "$GITHUB_REF_NAME" -p "$f"
+            for want in $(sed -nE 's/^ *(- )?(url|path): *//p' "$f" | sort -u); do
+              echo "$assets" | grep -qxF "$want" \
+                || { echo "::error::$f names $want, which isn't on the release; not publishing"; exit 1; }
+            done
           done
           gh release edit "$GITHUB_REF_NAME" --draft=false --latest
           echo "Published $GITHUB_REF_NAME"
