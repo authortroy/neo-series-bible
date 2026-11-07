@@ -1,0 +1,48 @@
+# SERIES BIBLE EDITION: release by raising the version.
+#
+# When a push to main changes package.json's version to one that has no tag
+# yet, this tags it (v<version>) and starts "Build NEO Series Bible", which
+# builds, signs, and publishes the release for installed copies to update
+# from. So a release is just: node scripts/series-bible-identity.js --bump,
+# commit, push. (Pushing a v* tag yourself still works too.)
+
+name: Release on version
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - package.json
+      - .github/workflows/release-on-version.yml
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: release-on-version
+  cancel-in-progress: false
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Tag the new version and start the build
+        run: |
+          v=$(node -p "require('./package.json').version")
+          if git ls-remote --exit-code --tags origin "refs/tags/v$v" >/dev/null; then
+            echo "v$v is already tagged; nothing to release."
+            exit 0
+          fi
+          git tag "v$v"
+          git push origin "v$v"
+          # a tag pushed from here doesn't start the build by itself; ask for it
+          gh workflow run build.yml --ref "v$v"
+          echo "Tagged v$v and started its build."
