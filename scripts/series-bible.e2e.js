@@ -65,6 +65,37 @@ const writeBible = (over = {}) => {
 const tests = [];
 const test = (name, fn) => tests.push({ name, fn });
 
+// The Series Bible app reads NEO's book folders directly (its NEO parser and
+// its "NEO Library" button). If a new NEO stored books differently, that app
+// would stop seeing them, so the daily NEO merge fails here and nothing is
+// released until the Series Bible is updated to match.
+test('a NEO book is still stored the way the Series Bible app reads it', async () => {
+  const flushed = await js('flushAllSaves().then(() => true)').catch(() => true);
+  assert.ok(flushed);
+  await tick(800);
+  const libJson = JSON.parse(fs.readFileSync(path.join(lib, 'library.json'), 'utf8'));
+  assert.ok(Array.isArray(libJson.shelves), 'library.json has shelves');
+  assert.ok(libJson.shelves.every((s) => typeof s.name === 'string' && Array.isArray(s.bookIds)), 'each shelf: name + bookIds');
+  const dir = bookDir();
+  const meta = JSON.parse(fs.readFileSync(path.join(dir, 'book.json'), 'utf8'));
+  assert.equal(meta.id, path.basename(dir), 'a book folder is named by its id');
+  assert.ok(libJson.shelves.some((s) => s.bookIds.includes(meta.id)), 'the book is on a shelf by its id');
+  assert.equal(typeof meta.title, 'string');
+  assert.ok(Array.isArray(meta.chapterOrder) && meta.chapterOrder.length >= 3, 'book.json chapterOrder');
+  assert.equal(typeof meta.chapterTitles, 'object', 'book.json chapterTitles');
+  assert.equal(meta.chapterTitles[ids[0]], 'The Thaw');
+  assert.equal(typeof meta.wordCount, 'number', 'book.json wordCount');
+  if (meta.chapterKinds !== undefined) assert.equal(typeof meta.chapterKinds, 'object');
+  for (const c of meta.chapterOrder) {
+    const html = fs.readFileSync(path.join(dir, 'chapters', c + '.html'), 'utf8');
+    if (ids.includes(c)) assert.match(html, /<p[\s>]/, 'chapters/<id>.html holds <p> paragraphs');
+  }
+  // where a moved library is recorded (the Series Bible finds the library from it)
+  const mainSrc = fs.readFileSync(path.join(__dirname, '..', 'main.js'), 'utf8');
+  assert.match(mainSrc, /settings\.libraryDir\s*=/, 'settings.json keeps libraryDir');
+  assert.match(mainSrc, /'settings\.json'/, 'NEO settings file is settings.json');
+});
+
 test('a book with no series-bible.json has no bible tabs and nothing on its cards', async () => {
   assert.deepEqual(await tabsShown(), [false, false, false]);
   await clickTab('outline');
