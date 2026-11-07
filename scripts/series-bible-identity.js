@@ -63,6 +63,10 @@ function main(argv) {
   pkg.build.artifactName = 'NEO-Series-Bible-${version}-${arch}.${ext}';
   pkg.build.nsis = { ...(pkg.build.nsis || {}), artifactName: 'NEO-Series-Bible-Setup-${version}.${ext}' };
   pkg.build.portable = { ...(pkg.build.portable || {}), artifactName: 'NEO-Series-Bible-${version}-portable.${ext}' };
+  // Mac update zips keep NEO's "-mac.zip" ending (the build uploads *-mac.zip);
+  // the dmg names its own
+  pkg.build.mac = { ...(pkg.build.mac || {}), artifactName: 'NEO-Series-Bible-${version}-${arch}-mac.${ext}' };
+  pkg.build.dmg = { ...(pkg.build.dmg || {}), artifactName: 'NEO-Series-Bible-${version}-${arch}.${ext}' };
   write('package.json', pkg);
 
   const lockFile = path.join(ROOT, 'package-lock.json');

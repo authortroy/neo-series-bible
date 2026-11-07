@@ -1,7 +1,7 @@
 {
   "name": "neo-series-bible",
   "productName": "NEO Series Bible",
-  "version": "1.6.301",
+  "version": "1.6.302",
   "description": "NEO, Hugh Howey's word processor for authors, with The Plot Dude's Series Bible built in.",
   "homepage": "https://github.com/hughhowey/neo",
   "main": "main.js",
@@ -67,7 +67,8 @@
       "gatekeeperAssess": false,
       "entitlements": "build/entitlements.mac.plist",
       "entitlementsInherit": "build/entitlements.mac.plist",
-      "notarize": true
+      "notarize": true,
+      "artifactName": "NEO-Series-Bible-${version}-${arch}-mac.${ext}"
     },
     "win": {
       "target": [
@@ -155,7 +156,10 @@
     "toolsets": {
       "appimage": "1.0.3"
     },
-    "artifactName": "NEO-Series-Bible-${version}-${arch}.${ext}"
+    "artifactName": "NEO-Series-Bible-${version}-${arch}.${ext}",
+    "dmg": {
+      "artifactName": "NEO-Series-Bible-${version}-${arch}.${ext}"
+    }
   },
   "author": "Hugh Howey",
   "license": "MIT",
@@ -190,6 +194,6 @@
   },
   "seriesBible": {
     "neoVersion": "1.6.3",
-    "revision": 1
+    "revision": 2
   }
 }
