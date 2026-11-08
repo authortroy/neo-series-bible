@@ -1,8 +1,8 @@
 {
-  "name": "neo-series-bible",
-  "productName": "NEO Series Bible",
-  "version": "1.6.302",
-  "description": "NEO, Hugh Howey's word processor for authors, with The Plot Dude's Series Bible built in.",
+  "name": "neo",
+  "productName": "NEO",
+  "version": "1.6.4",
+  "description": "A word processor for authors. Distraction-free by default.",
   "homepage": "https://github.com/hughhowey/neo",
   "main": "main.js",
   "scripts": {
@@ -22,7 +22,6 @@
     "test:find": "electron scripts/find.e2e.js",
     "test:script-keys": "electron scripts/script-keys.e2e.js",
     "test:new-script": "electron scripts/new-script.e2e.js",
-    "test:series-bible": "electron scripts/series-bible.e2e.js",
     "test": "node --test \"scripts/*.test.js\"",
     "test:coverage": "node --test --experimental-test-coverage \"scripts/*.test.js\"",
     "lint": "oxlint",
@@ -36,15 +35,13 @@
     "package:all": "electron-builder --mac --win --linux"
   },
   "build": {
-    "appId": "com.plotdude.neo-seriesbible",
-    "productName": "NEO Series Bible",
-    "publish": [
-      {
-        "provider": "github",
-        "owner": "authortroy",
-        "repo": "neo-series-bible"
-      }
-    ],
+    "appId": "com.hughhowey.neo",
+    "productName": "NEO",
+    "publish": {
+      "provider": "github",
+      "owner": "hughhowey",
+      "repo": "neo"
+    },
     "mac": {
       "category": "public.app-category.productivity",
       "target": [
@@ -67,8 +64,7 @@
       "gatekeeperAssess": false,
       "entitlements": "build/entitlements.mac.plist",
       "entitlementsInherit": "build/entitlements.mac.plist",
-      "notarize": true,
-      "artifactName": "NEO-Series-Bible-${version}-${arch}-mac.${ext}"
+      "notarize": true
     },
     "win": {
       "target": [
@@ -109,10 +105,10 @@
     "nsis": {
       "oneClick": true,
       "deleteAppDataOnUninstall": false,
-      "artifactName": "NEO-Series-Bible-Setup-${version}.${ext}"
+      "artifactName": "${productName}-Setup-${version}.${ext}"
     },
     "portable": {
-      "artifactName": "NEO-Series-Bible-${version}-portable.${ext}"
+      "artifactName": "${productName}-${version}-portable.${ext}"
     },
     "asarUnpack": [
       "node_modules/dictionary-ro/**",
@@ -155,10 +151,6 @@
     ],
     "toolsets": {
       "appimage": "1.0.3"
-    },
-    "artifactName": "NEO-Series-Bible-${version}-${arch}.${ext}",
-    "dmg": {
-      "artifactName": "NEO-Series-Bible-${version}-${arch}.${ext}"
     }
   },
   "author": "Hugh Howey",
@@ -191,9 +183,5 @@
   },
   "allowScripts": {
     "electron@33.4.11": true
-  },
-  "seriesBible": {
-    "neoVersion": "1.6.3",
-    "revision": 2
   }
 }
