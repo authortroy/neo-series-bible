@@ -203,8 +203,8 @@ let writing = {};            // chapterId -> chapter writes still on their way t
 let stickies = [];           // [{id, chapterId, text, resolved}]
 let darlings = [];           // [{id, html, text, chapterId, chapterLabel, date}]
 let bible = null;            // SERIES BIBLE EDITION: series-bible.json, or null (see SERIES BIBLE)
-const BIBLE_TABS = ['characters', 'locations', 'events'];
-const BIBLE_TITLES = { characters: 'Characters', locations: 'Locations', events: 'Events' };
+const BIBLE_TABS = ['characters', 'locations', 'events', 'ask'];
+const BIBLE_TITLES = { characters: 'Characters', locations: 'Locations', events: 'Events', ask: 'Ask' };
 let currentTab = 'manuscript';
 let currentChapterId = null; // chapter the caret/scroll is in
 let wordMode = 'book';       // 'book' | 'chapter'
@@ -8904,6 +8904,7 @@ function bibleChanged() {
   if (!book) return;
   if (BIBLE_TABS.includes(currentTab)) {
     if (!bible) switchTab('manuscript');
+    else if (currentTab === 'ask') askSearchRun(); // (the question being typed stays put)
     else {
       const keep = $('#paper-scroll').scrollTop;
       renderBible(currentTab);
@@ -8998,6 +8999,7 @@ function renderBible(kind) {
   const wrap = $('#bible-list');
   wrap.innerHTML = '';
   if (!bible) return;
+  if (kind === 'ask') { renderAsk(wrap); return; }
   const from = document.createElement('div');
   from.className = 'sb-from';
   const when = bible.updated ? fmtBibleDate(bible.updated) : '';
@@ -9018,8 +9020,9 @@ function renderBible(kind) {
   }
 
   if (kind === 'characters') {
-    for (const c of list) {
+    for (const [i, c] of list.entries()) {
       const el = bibleEntry(c.name, c.role);
+      el.dataset.idx = i;
       bibleDescription(el, c.description);
       bibleField(el, 'Looks', c.physical);
       bibleField(el, 'Personality', c.personality);
@@ -9030,8 +9033,9 @@ function renderBible(kind) {
       wrap.appendChild(el);
     }
   } else if (kind === 'locations') {
-    for (const l of list) {
+    for (const [i, l] of list.entries()) {
       const el = bibleEntry(l.name, l.type);
+      el.dataset.idx = i;
       bibleDescription(el, l.description);
       bibleField(el, 'Significance', l.significance);
       bibleField(el, 'First appears', l.firstAppearance);
@@ -9041,7 +9045,7 @@ function renderBible(kind) {
   } else {
     // events, in story order, under the chapter each one names
     let current = null;
-    for (const ev of list) {
+    for (const [i, ev] of list.entries()) {
       const ch = String(ev.chapter || '').trim();
       if (ch !== current) {
         current = ch;
@@ -9051,6 +9055,7 @@ function renderBible(kind) {
         wrap.appendChild(h);
       }
       const el = bibleEntry(ev.title, '');
+      el.dataset.idx = i;
       el.classList.add('sb-event');
       bibleDescription(el, ev.description);
       bibleField(el, 'Who', ev.characters);
@@ -9065,6 +9070,359 @@ function fmtBibleDate(iso) {
   const d = new Date(iso);
   if (isNaN(d)) return '';
   return d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+}
+
+/* -- the Ask tab: search the bible here; ask the Series Bible app ------- */
+// Searching reads series-bible.json, so it works on any computer, offline.
+// Questions go to the Series Bible app on this computer (main.js
+// askSeriesBible), which answers from the bible first and reads the
+// manuscript only if it has to. The tab's search text, draft question and
+// answers are kept per book for as long as NEO is open (never written).
+
+const askStates = new Map();
+function askState() {
+  const id = book ? book.id : '';
+  if (!askStates.has(id)) askStates.set(id, { query: '', draft: '', answers: [], pending: null, status: null });
+  return askStates.get(id);
+}
+
+const foldText = (v) => String(v || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+
+// every searchable thing in the bible: what it is, its name, and its text
+function bibleSearchItems() {
+  if (!bible) return [];
+  const items = [];
+  const chars = Array.isArray(bible.characters) ? bible.characters : [];
+  chars.forEach((c, i) => items.push({ kind: 'characters', idx: i, title: c.name, chip: c.role,
+    fields: [c.description, c.physical, c.personality, c.backstory, c.relationships, c.firstAppearance, c.notes] }));
+  const locs = Array.isArray(bible.locations) ? bible.locations : [];
+  locs.forEach((l, i) => items.push({ kind: 'locations', idx: i, title: l.name, chip: l.type,
+    fields: [l.description, l.significance, l.firstAppearance, l.notes] }));
+  const evs = Array.isArray(bible.events) ? bible.events : [];
+  evs.forEach((ev, i) => items.push({ kind: 'events', idx: i, title: ev.title, chip: ev.chapter,
+    fields: [ev.description, ev.characters, ev.location, ev.significance] }));
+  const story = (book && book.chapterOrder) || [];
+  for (const chId of story) {
+    const sum = bibleSummary(chId);
+    if (sum) items.push({ kind: 'chapters', ch: chId, title: chapterName(chId), chip: '', fields: [sum] });
+  }
+  return items;
+}
+
+// the items with every word of the query in them, names first
+function bibleSearch(query) {
+  const words = foldText(query).split(/\s+/).filter(Boolean);
+  if (!words.length) return { words, hits: [] };
+  const hits = [];
+  for (const it of bibleSearchItems()) {
+    const name = foldText(it.title);
+    const all = name + '\n' + foldText(it.chip) + '\n' + it.fields.map(foldText).join('\n');
+    if (!words.every((w) => all.includes(w))) continue;
+    const score = words.filter((w) => name.includes(w)).length;
+    // the text to show: the first field with one of the words in it
+    const text = it.fields.map((f) => String(f || '').trim()).find((f) => words.some((w) => foldText(f).includes(w)))
+      || it.fields.map((f) => String(f || '').trim()).find(Boolean) || '';
+    hits.push({ ...it, score, text });
+  }
+  const order = { characters: 0, locations: 1, events: 2, chapters: 3 };
+  hits.sort((a, b) => b.score - a.score || order[a.kind] - order[b.kind]);
+  return { words, hits };
+}
+
+// text into el, the query's words marked; long text cut to the part around the first one
+function markInto(el, text, words, max = 0) {
+  let str = String(text || '');
+  if (max && str.length > max) {
+    const f = foldText(str);
+    let at = -1;
+    for (const w of words) { const i = f.indexOf(w); if (i >= 0 && (at < 0 || i < at)) at = i; }
+    const start = Math.max(0, Math.min(at < 0 ? 0 : at - 60, str.length - max));
+    str = (start > 0 ? '…' : '') + str.slice(start, start + max).trim() + (start + max < str.length ? '…' : '');
+  }
+  const f = foldText(str);
+  // NFD folding can change lengths; mark only when it didn't
+  if (!words.length || f.length !== str.length) { el.append(str); return; }
+  const marks = [];
+  for (const w of words) { let i = f.indexOf(w); while (i >= 0) { marks.push([i, i + w.length]); i = f.indexOf(w, i + w.length); } }
+  marks.sort((a, b) => a[0] - b[0]);
+  let pos = 0;
+  for (const [a, b] of marks) {
+    if (a < pos) continue;
+    el.append(str.slice(pos, a));
+    const m = document.createElement('mark');
+    m.textContent = str.slice(a, b);
+    el.appendChild(m);
+    pos = b;
+  }
+  el.append(str.slice(pos));
+}
+
+const ASK_KIND_LABEL = { characters: 'Character', locations: 'Location', events: 'Event', chapters: 'Chapter summary' };
+
+function askSearchRun() {
+  const box = $('#sb-search-results');
+  if (!box) return;
+  const st = askState();
+  box.innerHTML = '';
+  const { words, hits } = bibleSearch(st.query);
+  if (!words.length) { box.hidden = true; return; }
+  box.hidden = false;
+  if (!hits.length) {
+    const none = document.createElement('div');
+    none.className = 'sb-search-none';
+    none.textContent = t('Nothing in the bible matches that. Try fewer words, or ask below.');
+    box.appendChild(none);
+    return;
+  }
+  const count = document.createElement('div');
+  count.className = 'sb-search-count';
+  count.textContent = hits.length === 1 ? t('1 match') : t('{n} matches', { n: hits.length });
+  box.appendChild(count);
+  for (const h of hits.slice(0, 80)) {
+    const row = document.createElement('button');
+    row.type = 'button';
+    row.className = 'sb-hit';
+    row.dataset.kind = h.kind;
+    if (h.kind === 'chapters') row.dataset.ch = h.ch; else row.dataset.idx = h.idx;
+    const head = document.createElement('div');
+    head.className = 'sb-hit-head';
+    const kind = document.createElement('span');
+    kind.className = 'sb-hit-kind';
+    kind.textContent = t(ASK_KIND_LABEL[h.kind]);
+    const name = document.createElement('span');
+    name.className = 'sb-hit-name sb-find';
+    markInto(name, h.title || t('(no name)'), words);
+    head.append(kind, name);
+    row.appendChild(head);
+    if (h.text) {
+      const txt = document.createElement('div');
+      txt.className = 'sb-hit-text';
+      markInto(txt, h.text, words, 220);
+      row.appendChild(txt);
+    }
+    row.title = h.kind === 'chapters' ? t('Go to this chapter') : t('Show it in {tab}', { tab: t(BIBLE_TITLES[h.kind]) });
+    row.addEventListener('click', () => goToBibleHit(row.dataset));
+    box.appendChild(row);
+  }
+}
+
+// a search result's place: its chapter, or its entry on its own tab
+function goToBibleHit(d) {
+  if (d.kind === 'chapters') { switchTab('manuscript'); goToChapterTop(d.ch); return; }
+  switchTab(d.kind);
+  const el = $(`#bible-list .sb-entry[data-idx="${d.idx}"]`);
+  if (!el) return;
+  el.scrollIntoView({ behavior: scrollBehavior(), block: 'center' });
+  el.classList.remove('sb-flash');
+  el.getBoundingClientRect(); // restart the flash
+  el.classList.add('sb-flash');
+}
+
+const ASK_MESSAGES = {
+  NOT_RUNNING: "Open The Plot Dude's Series Bible on this computer to ask questions. Searching works without it.",
+  NOT_TRACKED: "The Series Bible on this computer isn't tracking this book yet. Add it there with the NEO Library button.",
+  NO_API_KEY: "The Series Bible needs your Anthropic API key to answer. Add it in the Series Bible app's Settings.",
+  TIMEOUT: 'No answer after five minutes. The Series Bible may be busy (a Deep Scan?). Try again in a bit.',
+  NO_APP: 'Questions are answered by the Series Bible app on your computer. Searching works here.'
+};
+function askMessage(res) {
+  if (ASK_MESSAGES[res.code]) return t(ASK_MESSAGES[res.code]);
+  return res.error ? t('The Series Bible said: {error}', { error: res.error })
+    : t("Couldn't reach the Series Bible ({code}). Try quitting and reopening it.", { code: res.code || '?' });
+}
+
+function askStatusShow() {
+  const el = $('#sb-ask-status');
+  if (!el) return;
+  const s = askState().status;
+  el.classList.toggle('sb-warn', !!(s && !(s.ok && s.tracked)));
+  el.textContent = !s ? t('Looking for the Series Bible…')
+    : s.ok && s.tracked ? t('Answers come from the Series Bible on this computer. It reads the manuscript when the bible isn’t enough.')
+      : s.ok ? t(ASK_MESSAGES.NOT_TRACKED) : askMessage(s);
+}
+async function askStatusRefresh() {
+  const st = askState();
+  const id = book && book.id;
+  if (!window.neo.bibleStatus) { st.status = { ok: false, code: 'NO_APP' }; askStatusShow(); return; }
+  const s = await window.neo.bibleStatus(id).catch(() => ({ ok: false, code: 'NOT_RUNNING' }));
+  if (!book || book.id !== id) return;
+  st.status = s;
+  if (currentTab === 'ask') askStatusShow();
+}
+
+// the answer's text: paragraphs, "- " lists, **bold**
+function answerInto(el, text) {
+  const blocks = String(text || '').replace(/\r/g, '').split(/\n{2,}/);
+  const inline = (parent, line) => {
+    const parts = line.split(/\*\*(.+?)\*\*/g);
+    parts.forEach((part, i) => {
+      if (i % 2) { const b = document.createElement('strong'); b.textContent = part; parent.appendChild(b); }
+      else parent.append(part);
+    });
+  };
+  for (const block of blocks) {
+    const lines = block.split('\n').filter((l) => l.trim());
+    if (!lines.length) continue;
+    if (lines.every((l) => /^\s*([-*•]|\d+[.)])\s+/.test(l))) {
+      const ul = document.createElement('ul');
+      for (const l of lines) { const li = document.createElement('li'); inline(li, l.replace(/^\s*([-*•]|\d+[.)])\s+/, '')); ul.appendChild(li); }
+      el.appendChild(ul);
+    } else {
+      const p = document.createElement('p');
+      lines.forEach((l, i) => { if (i) p.appendChild(document.createElement('br')); inline(p, l.replace(/^#+\s*/, '')); });
+      el.appendChild(p);
+    }
+  }
+}
+
+function askAnswersShow() {
+  const box = $('#sb-answers');
+  if (!box) return;
+  const st = askState();
+  box.innerHTML = '';
+  const list = st.pending ? [st.pending, ...st.answers] : st.answers;
+  for (const a of list) {
+    const card = document.createElement('div');
+    card.className = 'sb-answer' + (a === st.pending ? ' sb-pending' : '') + (a.failed ? ' sb-failed' : '');
+    const q = document.createElement('div');
+    q.className = 'sb-answer-q sb-find';
+    q.textContent = a.q;
+    const body = document.createElement('div');
+    body.className = 'sb-answer-a sb-find';
+    if (a === st.pending) body.textContent = t('Asking the Series Bible… (when it has to read the manuscript, this can take a minute)');
+    else answerInto(body, a.a);
+    card.append(q, body);
+    if (a !== st.pending) {
+      const foot = document.createElement('div');
+      foot.className = 'sb-answer-foot';
+      const note = document.createElement('span');
+      note.textContent = a.failed ? '' : a.usedManuscript ? t('From the bible and the manuscript') : t('From the bible');
+      foot.appendChild(note);
+      if (!a.failed) {
+        const copy = document.createElement('button');
+        copy.type = 'button';
+        copy.className = 'sb-copy';
+        copy.textContent = t('Copy');
+        copy.addEventListener('click', () => {
+          try { navigator.clipboard.writeText(a.a); copy.textContent = t('Copied'); } catch { /* no clipboard */ }
+        });
+        foot.appendChild(copy);
+      }
+      card.appendChild(foot);
+    }
+    box.appendChild(card);
+  }
+}
+
+async function askSubmit() {
+  const st = askState();
+  const input = $('#sb-ask-q');
+  const q = (input ? input.value : st.draft).trim();
+  if (!q || st.pending) return;
+  const id = book.id;
+  if (!window.neo.bibleAsk) { st.status = { ok: false, code: 'NO_APP' }; askStatusShow(); return; }
+  st.pending = { q };
+  st.draft = '';
+  if (input) input.value = '';
+  askButtonShow();
+  askAnswersShow();
+  const res = await window.neo.bibleAsk(id, q).catch(() => ({ ok: false, code: 'NOT_RUNNING' }));
+  const s = askStates.get(id);
+  s.pending = null;
+  if (res.ok) {
+    // an earlier failed try at the same question is no longer news
+    s.answers = s.answers.filter((x) => !(x.failed && x.q === q));
+    s.answers.unshift({ q, a: String(res.answer || '').trim(), usedManuscript: !!res.usedManuscript });
+    s.status = { ok: true, tracked: true };
+  } else {
+    s.answers.unshift({ q, a: askMessage(res), failed: true });
+    if (['NOT_RUNNING', 'NOT_TRACKED'].includes(res.code)) s.status = res.code === 'NOT_TRACKED' ? { ok: true, tracked: false } : res;
+    // the question back in the box, to try again
+    if (!s.draft) s.draft = q;
+  }
+  if (book && book.id === id && currentTab === 'ask') {
+    const box = $('#sb-ask-q');
+    if (box && !box.value) box.value = s.draft;
+    askButtonShow();
+    askStatusShow();
+    askAnswersShow();
+  }
+}
+
+function askButtonShow() {
+  const go = $('#sb-ask-go');
+  if (!go) return;
+  const st = askState();
+  go.disabled = !!st.pending;
+  go.textContent = st.pending ? t('Asking…') : t('Ask');
+}
+
+function renderAsk(wrap) {
+  const st = askState();
+  const from = document.createElement('div');
+  from.className = 'sb-from';
+  from.textContent = t('Search the Series Bible, or ask it about this book');
+  wrap.appendChild(from);
+
+  const search = document.createElement('input');
+  search.type = 'search';
+  search.id = 'sb-search';
+  search.className = 'sb-input';
+  search.placeholder = t('Search characters, places, events and chapter summaries');
+  search.value = st.query;
+  search.setAttribute('aria-label', t('Search the Series Bible'));
+  let timer = 0;
+  search.addEventListener('input', () => {
+    st.query = search.value;
+    clearTimeout(timer);
+    timer = setTimeout(askSearchRun, 120);
+  });
+  search.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && search.value) { e.preventDefault(); e.stopPropagation(); search.value = ''; st.query = ''; askSearchRun(); }
+    if (e.key === 'Enter') { e.preventDefault(); const first = $('#sb-search-results .sb-hit'); if (first) first.click(); }
+  });
+  const results = document.createElement('div');
+  results.id = 'sb-search-results';
+  results.hidden = true;
+
+  const ask = document.createElement('div');
+  ask.className = 'sb-ask';
+  const head = document.createElement('div');
+  head.className = 'sb-group';
+  head.textContent = t('Ask about this book');
+  const q = document.createElement('textarea');
+  q.id = 'sb-ask-q';
+  q.className = 'sb-input';
+  q.rows = 3;
+  q.placeholder = t('“Where did Ines first see the lantern?” “Which chapters is Pol in?”');
+  q.setAttribute('aria-label', t('Your question'));
+  q.value = st.draft;
+  q.addEventListener('input', () => { st.draft = q.value; });
+  q.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); askSubmit(); }
+  });
+  const row = document.createElement('div');
+  row.className = 'sb-ask-row';
+  const status = document.createElement('div');
+  status.id = 'sb-ask-status';
+  status.className = 'sb-ask-status';
+  const go = document.createElement('button');
+  go.type = 'button';
+  go.id = 'sb-ask-go';
+  go.className = 'sb-ask-go';
+  go.title = K(t('Ask (⌘↩)'), t('Ask (Ctrl+Enter)'));
+  go.addEventListener('click', askSubmit);
+  row.append(status, go);
+  const answers = document.createElement('div');
+  answers.id = 'sb-answers';
+  ask.append(head, q, row, answers);
+
+  wrap.append(search, results, ask);
+  askSearchRun();
+  askButtonShow();
+  askStatusShow();
+  askAnswersShow();
+  askStatusRefresh();
 }
 
 /* ================================================================== */

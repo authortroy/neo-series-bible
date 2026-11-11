@@ -13,6 +13,8 @@ const os = require('os');
 const path = require('path');
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), `neo-bible-test-${process.pid}-`));
+// where a running Series Bible would leave its port and token (none yet)
+process.env.PLOTDUDE_BRIDGE_DIR = path.join(tmp, 'PlotDude');
 app.setPath('userData', path.join(tmp, 'app'));
 app.setPath('documents', tmp);
 const lib = path.join(tmp, 'NEO Library');
@@ -200,6 +202,144 @@ test('a new summary from the Series Bible shows on the next look, without a reop
   await clickTab('outline');
   await refresh();
   await until(() => js(`!!document.querySelector('.ob-cell[data-kind="chapter"][data-ch="${ids[2]}"] .ob-bible')`));
+});
+
+test('Ask: the tab is there with the others', async () => {
+  assert.equal(await js(`!document.querySelector('.tab[data-tab="ask"]').hidden`), true);
+  await clickTab('ask');
+  assert.equal(await js(`document.getElementById('aux-title').textContent`), 'Ask');
+  assert.equal(await js(`!!document.getElementById('sb-search') && !!document.getElementById('sb-ask-q')`), true);
+});
+
+test('Ask: typing in the search box searches the bible (and only types)', async () => {
+  const before = await js('JSON.stringify(book.chapterOrder)');
+  await js(`document.getElementById('sb-search').focus()`);
+  wc.insertText('varga');
+  await tick(300);
+  assert.equal(await js(`document.getElementById('sb-search').value`), 'varga');
+  const hits = await js(`[...document.querySelectorAll('#sb-search-results .sb-hit')].map((h) => h.dataset.kind + ':' + h.querySelector('.sb-hit-name').textContent)`);
+  assert.deepEqual(hits, ['characters:Ines Varga', 'characters:Pol Varga']);
+  assert.equal(await js(`document.querySelectorAll('#sb-search-results mark').length >= 2`), true);
+  assert.equal(await js('JSON.stringify(book.chapterOrder)'), before, 'the manuscript is untouched');
+});
+
+test('Ask: search finds chapter summaries, events and places, every word, any accents', async () => {
+  await js(`(() => { const i = document.getElementById('sb-search'); i.value = 'lantern secret'; i.dispatchEvent(new Event('input')); })()`);
+  await tick(300);
+  const hits = await js(`[...document.querySelectorAll('#sb-search-results .sb-hit')].map((h) => h.dataset.kind)`);
+  assert.deepEqual(hits, ['chapters'], 'only the summary has both words');
+  await js(`(() => { const i = document.getElementById('sb-search'); i.value = 'ÍCE house'; i.dispatchEvent(new Event('input')); })()`);
+  await tick(300);
+  const kinds = await js(`[...document.querySelectorAll('#sb-search-results .sb-hit')].map((h) => h.dataset.kind)`);
+  assert.ok(kinds.includes('locations') && kinds.includes('events'), kinds.join());
+  await js(`(() => { const i = document.getElementById('sb-search'); i.value = 'zeppelin'; i.dispatchEvent(new Event('input')); })()`);
+  await tick(300);
+  assert.match(await js(`document.querySelector('.sb-search-none').textContent`), /Nothing in the bible/);
+});
+
+test('Ask: a result takes you to it (an entry on its tab, or the chapter)', async () => {
+  await js(`(() => { const i = document.getElementById('sb-search'); i.value = 'pol'; i.dispatchEvent(new Event('input')); })()`);
+  await tick(300);
+  await shot('bible-ask-search');
+  await js(`[...document.querySelectorAll('#sb-search-results .sb-hit')].find((h) => h.dataset.kind === 'characters').click()`);
+  await tick(400);
+  assert.equal(await js('currentTab'), 'characters');
+  assert.equal(await js(`document.querySelector('.sb-entry.sb-flash .sb-name').textContent`), 'Pol Varga');
+  await clickTab('ask');
+  assert.equal(await js(`document.getElementById('sb-search').value`), 'pol', 'the search is still there');
+  await js(`(() => { const i = document.getElementById('sb-search'); i.value = 'convoy'; i.dispatchEvent(new Event('input')); })()`);
+  await tick(300);
+  await js(`document.querySelector('#sb-search-results .sb-hit[data-kind="chapters"]').click()`);
+  await tick(500);
+  assert.equal(await js('currentTab'), 'manuscript');
+  assert.equal(await js('currentChapterId'), ids[1]);
+  await clickTab('ask');
+  await js(`(() => { const i = document.getElementById('sb-search'); i.value = ''; i.dispatchEvent(new Event('input')); })()`);
+  await tick(200);
+});
+
+test('Ask: with no Series Bible running, it says how to get answers', async () => {
+  await tick(300);
+  assert.match(await js(`document.getElementById('sb-ask-status').textContent`), /Open The Plot Dude's Series Bible/);
+  await js(`document.getElementById('sb-ask-q').focus()`);
+  wc.insertText('Who is Pol?');
+  await js(`document.getElementById('sb-ask-go').click()`);
+  await until(() => js(`!!document.querySelector('.sb-answer.sb-failed')`));
+  assert.match(await js(`document.querySelector('.sb-answer .sb-answer-a').textContent`), /Open The Plot Dude's Series Bible/);
+  assert.equal(await js(`document.getElementById('sb-ask-q').value`), 'Who is Pol?', 'the question is back, to try again');
+});
+
+test('Ask: with the Series Bible running, the answer arrives (and ⌘↩ asks)', async () => {
+  const http = require('http');
+  const token = 'a'.repeat(48);
+  const asked = [];
+  const server = http.createServer((req, res) => {
+    let body = '';
+    req.on('data', (c) => { body += c; });
+    req.on('end', () => {
+      res.setHeader('content-type', 'application/json');
+      if (req.headers['x-series-bible-token'] !== token) { res.statusCode = 401; res.end('{"code":"BAD_TOKEN"}'); return; }
+      if (req.url.startsWith('/api/neo/status')) { res.end(JSON.stringify({ ok: true, tracked: true, bookTitle: 'The Lantern Year' })); return; }
+      const j = JSON.parse(body);
+      asked.push(j);
+      setTimeout(() => res.end(JSON.stringify({
+        answer: 'Pol Varga is **Ines\'s brother**. He:\n\n- runs the weigh station\n- first appears in Chapter 3',
+        usedManuscript: true, bookTitle: 'The Lantern Year'
+      })), 400);
+    });
+  });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  const dir = process.env.PLOTDUDE_BRIDGE_DIR;
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, 'series-bible-bridge.json'), JSON.stringify({
+    format: 'plotdude-series-bible-bridge', version: 1, port: server.address().port, token, pid: process.pid
+  }));
+  await clickTab('manuscript');
+  await clickTab('ask');
+  await until(() => js(`/Answers come from the Series Bible/.test(document.getElementById('sb-ask-status').textContent)`));
+  await js(`(() => { const q = document.getElementById('sb-ask-q'); q.focus(); q.select(); })()`);
+  await wc.insertText('Who is Pol?');
+  await tick(100);
+  wc.sendInputEvent({ type: 'keyDown', keyCode: 'Return', modifiers: [process.platform === 'darwin' ? 'meta' : 'control'] });
+  await until(() => js(`!!document.querySelector('.sb-answer.sb-pending')`), 3000);
+  assert.equal(await js(`document.getElementById('sb-ask-go').disabled`), true);
+  await until(() => js(`!document.querySelector('.sb-answer.sb-pending')`));
+  assert.equal(asked.length, 1);
+  assert.equal(asked[0].question, 'Who is Pol?');
+  assert.equal(asked[0].neoBookId, await js('book.id'), 'the book by its NEO id');
+  const first = '.sb-answer:not(.sb-failed)';
+  assert.equal(await js(`document.querySelector('${first} strong').textContent`), "Ines's brother");
+  assert.equal(await js(`document.querySelectorAll('${first} li').length`), 2);
+  assert.match(await js(`document.querySelector('${first} .sb-answer-foot').textContent`), /manuscript/);
+  assert.equal(await js(`document.getElementById('sb-ask-q').value`), '');
+  assert.equal(await js(`document.querySelectorAll('.sb-answer').length`), 1, 'the earlier failed try at the same question is gone');
+  await shot('bible-ask-answer');
+
+  // the bible updating while a question is being typed leaves it be
+  await js(`(() => { const q = document.getElementById('sb-ask-q'); q.focus(); })()`);
+  wc.insertText('Half a quest');
+  const j = JSON.parse(fs.readFileSync(bibleFile(), 'utf8'));
+  j.updated = new Date().toISOString();
+  j.characters.push({ name: 'Ada Kell', role: 'minor', description: 'The ferryman.' });
+  fs.writeFileSync(bibleFile(), JSON.stringify(j));
+  await refresh();
+  assert.equal(await js(`document.getElementById('sb-ask-q').value`), 'Half a quest');
+  assert.equal(await js(`document.activeElement.id`), 'sb-ask-q');
+  await js(`(() => { const i = document.getElementById('sb-search'); i.value = 'ferryman'; i.dispatchEvent(new Event('input')); })()`);
+  await tick(300);
+  assert.equal(await js(`document.querySelector('#sb-search-results .sb-hit-name').textContent`), 'Ada Kell');
+  await js(`(() => { const i = document.getElementById('sb-search'); i.value = ''; i.dispatchEvent(new Event('input')); document.getElementById('sb-ask-q').value = ''; askState().draft = ''; })()`);
+
+  j.characters = j.characters.filter((c) => c.name !== 'Ada Kell');
+  fs.writeFileSync(bibleFile(), JSON.stringify(j));
+  await refresh();
+
+  // the app quits: its file goes, and the tab says so again
+  server.close();
+  fs.unlinkSync(path.join(dir, 'series-bible-bridge.json'));
+  await clickTab('manuscript');
+  await clickTab('ask');
+  await until(() => js(`/Open The Plot Dude's Series Bible/.test(document.getElementById('sb-ask-status').textContent)`));
 });
 
 test('closed on Characters, the book opens on Characters again', async () => {

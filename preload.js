@@ -28,6 +28,9 @@ contextBridge.exposeInMainWorld('neo', {
   snapshotRemove: (bookId, name) => ipcRenderer.invoke('snapshot:remove', bookId, name),
 
   readJSON: (bookId, name, fallback) => ipcRenderer.invoke('json:read', bookId, name, fallback),
+  // SERIES BIBLE EDITION: the Ask tab (main.js askSeriesBible)
+  bibleStatus: (bookId) => ipcRenderer.invoke('bible:status', bookId),
+  bibleAsk: (bookId, question) => ipcRenderer.invoke('bible:ask', bookId, question),
   writeJSON: (bookId, name, data) => ipcRenderer.invoke('json:write', bookId, name, data),
 
   exportSave: (payload) => ipcRenderer.invoke('export:save', payload),

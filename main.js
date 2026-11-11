@@ -1213,6 +1213,46 @@ ipcMain.handle('app:lookUp', (e) => {
   return true;
 });
 
+// SERIES BIBLE EDITION: the Ask tab's questions go to The Plot Dude's
+// Series Bible when it runs on this Mac. While it runs it keeps a small file
+// (never in iCloud) with its port and a token; the book is named by its NEO
+// folder, which is the same on every Mac. See app.js SERIES BIBLE.
+function seriesBibleBridge() {
+  const home = os.homedir();
+  const dir = process.env.PLOTDUDE_BRIDGE_DIR
+    || (process.platform === 'darwin' ? path.join(home, 'Library', 'Application Support', 'PlotDude')
+      : process.platform === 'win32' ? path.join(process.env.APPDATA || path.join(home, 'AppData', 'Roaming'), 'PlotDude')
+        : path.join(process.env.XDG_CONFIG_HOME || path.join(home, '.config'), 'PlotDude'));
+  let b;
+  try { b = JSON.parse(fs.readFileSync(path.join(dir, 'series-bible-bridge.json'), 'utf8')); } catch { return null; }
+  if (!b || b.format !== 'plotdude-series-bible-bridge' || !Number.isInteger(b.port) || typeof b.token !== 'string') return null;
+  // a file left by an app that's since quit (or crashed)
+  try { process.kill(b.pid, 0); } catch (err) { if (err.code !== 'EPERM') return null; }
+  return b;
+}
+async function askSeriesBible(route, init, ms) {
+  const b = seriesBibleBridge();
+  if (!b) return { ok: false, code: 'NOT_RUNNING' };
+  try {
+    const res = await fetch(`http://127.0.0.1:${b.port}/api/neo/${route}`, {
+      ...init,
+      headers: { 'content-type': 'application/json', 'x-series-bible-token': b.token },
+      signal: AbortSignal.timeout(ms)
+    });
+    let body = {};
+    try { body = await res.json(); } catch { /* not JSON */ }
+    if (!res.ok) return { ok: false, code: body.code || ('HTTP_' + res.status), error: body.error || '' };
+    return { ok: true, ...body };
+  } catch (err) {
+    if (err && err.name === 'TimeoutError') return { ok: false, code: 'TIMEOUT' };
+    return { ok: false, code: 'NOT_RUNNING' };
+  }
+}
+ipcMain.handle('bible:status', (_e, bookId) =>
+  askSeriesBible('status?book=' + encodeURIComponent(String(bookId || '')), { method: 'GET' }, 4000));
+ipcMain.handle('bible:ask', (_e, bookId, question) =>
+  askSeriesBible('ask', { method: 'POST', body: JSON.stringify({ neoBookId: String(bookId || ''), question: String(question || '') }) }, 5 * 60 * 1000));
+
 ipcMain.handle('json:read', (_e, bookId, name, fallback) => {
   return readJSON(path.join(bookDir(bookId), libName(name) + '.json'), fallback);
 });
