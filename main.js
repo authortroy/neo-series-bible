@@ -863,8 +863,10 @@ function afterLocal(files, read, away) {
 }
 function readJSON(file, fallback) {
   // still in iCloud: not unreadable, just not here. Falling back on .bak
-  // would write an older copy over it.
-  if (isCloudOnly(file)) throw cloudError(file);
+  // would write an older copy over it. SERIES BIBLE EDITION: and ask iCloud
+  // for it now, as a chapter read does, so a file another Mac just wrote
+  // (series-bible.json) arrives in seconds, not at the next launch.
+  if (isCloudOnly(file)) { requestDownload([file]); throw cloudError(file); }
   const main = parseJSONFile(file);
   if (main !== undefined) return main;
   if (!fs.existsSync(file) && !fs.existsSync(file + '.bak') && !fs.existsSync(file + '.tmp')) return fallback;
