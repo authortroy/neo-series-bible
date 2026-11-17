@@ -2582,3 +2582,8 @@ body.night .sb-hit-kind { color: #a4977a; }
 body.night .sb-ask-status, body.night .sb-search-count, body.night .sb-search-none, body.night .sb-answer-foot { color: #7d7768; }
 body.night .sb-ask-status.sb-warn, body.night .sb-failed .sb-answer-a { color: #c08a6a; }
 body.night .sb-copy { border-color: #4a463e; color: #a4977a; }
+/* SERIES BIBLE EDITION — About: whose work is whose */
+.sb-about-edition { font-family: -apple-system, BlinkMacSystemFont, sans-serif; font-size: 11px; letter-spacing: 2px; text-transform: uppercase; color: #8a7a55; margin: -4px 0 8px; }
+.modal.sb-about p.about-line { line-height: 1.5; margin: 10px 0 0; }
+.modal.sb-about p.about-line a { display: block; margin-top: 2px; color: #8a7a55; }
+body.night .sb-about-edition, body.night .modal.sb-about p.about-line a { color: #b9a676; }

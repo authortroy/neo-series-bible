@@ -1,0 +1,4 @@
+# SERIES BIBLE EDITION: this fork has its own README. When a new NEO release
+# is merged, keep ours (the merge needs `git config merge.ours.driver true`;
+# follow-neo.yml sets it, and SERIES-BIBLE.md has it for a merge by hand).
+README.md merge=ours

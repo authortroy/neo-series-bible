@@ -51,12 +51,17 @@ function main(argv) {
   pkg.productName = 'NEO Series Bible';
   pkg.description = "NEO, Hugh Howey's word processor for authors, with The Plot Dude's Series Bible built in.";
   pkg.seriesBible = { neoVersion: neo, revision: rev };
+  // Whose it is, for the installer and Get Info: this edition's home is The
+  // Plot Abides (so its questions go there, not to Hugh); NEO stays credited.
+  pkg.homepage = 'https://theplotabides.com/tools/neo-series-bible/';
+  pkg.author = 'Troy Lambert (The Plot Dude)';
   pkg.scripts = pkg.scripts || {};
   pkg.scripts['test:series-bible'] = 'electron scripts/series-bible.e2e.js';
   pkg.build = pkg.build || {};
   pkg.build.appId = 'com.plotdude.neo-seriesbible';
   pkg.build.productName = 'NEO Series Bible';
   pkg.build.publish = [RELEASES];
+  pkg.build.copyright = 'NEO © Hugh Howey (MIT license). Series Bible edition by Troy Lambert.';
   // Installer names without spaces: GitHub turns a space in an uploaded name
   // into a dot, and the updater looks for the exact name in latest*.yml, so a
   // spaced name ("NEO Series Bible-…") is one it could never download.
