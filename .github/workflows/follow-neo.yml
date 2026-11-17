@@ -63,6 +63,8 @@ jobs:
         run: |
           git config user.name "NEO Series Bible"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # this fork's README stays ours when NEO changes its own (.gitattributes)
+          git config merge.ours.driver true
           git fetch --no-tags https://github.com/hughhowey/neo.git "refs/tags/$TAG:refs/neo/$TAG"
           if ! git merge --no-ff --no-edit -m "Merge NEO $TAG" "refs/neo/$TAG"; then
             # package.json and its lock always disagree on the version line;

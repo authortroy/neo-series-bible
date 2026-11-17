@@ -9444,6 +9444,13 @@ function bibleEntry(name, chip) {
   return el;
 }
 
+// The other names an entry goes by (Series Bible 1.5.0 and later: names
+// merged into it), as one line. Shown the way the Series Bible app shows them.
+function bibleAliases(entry) {
+  const list = entry && Array.isArray(entry.aliases) ? entry.aliases : [];
+  return list.map((a) => String(a || '').trim()).filter(Boolean).join(', ');
+}
+
 function bibleDescription(el, text) {
   const v = String(text || '').trim();
   if (!v) return;
@@ -9481,6 +9488,7 @@ function renderBible(kind) {
     for (const [i, c] of list.entries()) {
       const el = bibleEntry(c.name, c.role);
       el.dataset.idx = i;
+      bibleField(el, 'Also known as', bibleAliases(c));
       bibleDescription(el, c.description);
       bibleField(el, 'Looks', c.physical);
       bibleField(el, 'Personality', c.personality);
@@ -9494,6 +9502,7 @@ function renderBible(kind) {
     for (const [i, l] of list.entries()) {
       const el = bibleEntry(l.name, l.type);
       el.dataset.idx = i;
+      bibleField(el, 'Also known as', bibleAliases(l));
       bibleDescription(el, l.description);
       bibleField(el, 'Significance', l.significance);
       bibleField(el, 'First appears', l.firstAppearance);
@@ -9552,10 +9561,10 @@ function bibleSearchItems() {
   const items = [];
   const chars = Array.isArray(bible.characters) ? bible.characters : [];
   chars.forEach((c, i) => items.push({ kind: 'characters', idx: i, title: c.name, chip: c.role,
-    fields: [c.description, c.physical, c.personality, c.backstory, c.relationships, c.firstAppearance, c.notes] }));
+    fields: [bibleAliases(c), c.description, c.physical, c.personality, c.backstory, c.relationships, c.firstAppearance, c.notes] }));
   const locs = Array.isArray(bible.locations) ? bible.locations : [];
   locs.forEach((l, i) => items.push({ kind: 'locations', idx: i, title: l.name, chip: l.type,
-    fields: [l.description, l.significance, l.firstAppearance, l.notes] }));
+    fields: [bibleAliases(l), l.description, l.significance, l.firstAppearance, l.notes] }));
   const evs = Array.isArray(bible.events) ? bible.events : [];
   evs.forEach((ev, i) => items.push({ kind: 'events', idx: i, title: ev.title, chip: ev.chapter,
     fields: [ev.description, ev.characters, ev.location, ev.significance] }));
@@ -19296,22 +19305,34 @@ function updateMessage(msg) {
   updateDialogShow(msg.state, msg);
 }
 
-// Help → About NEO: the version, plainly
+// Help → About: the version, plainly. SERIES BIBLE EDITION: and whose work
+// is whose. NEO is Hugh Howey's; this edition and its Series Bible tabs are
+// The Plot Dude's, so each kind of question has its own place to go.
 async function showAbout() {
   const v = await window.neo.appVersion();
+  // this edition's version is NEO's, with its own revision in the last two digits (1.6.600 = NEO 1.6.6)
+  const m = /^(\d+)\.(\d+)\.(\d+)$/.exec(v || '');
+  const neo = m ? `${m[1]}.${m[2]}.${Math.floor(Number(m[3]) / 100)}` : '';
   const bd = document.createElement('div');
   bd.className = 'modal-backdrop';
   bd.innerHTML = `
-    <div class="modal" style="width:340px;text-align:center">
+    <div class="modal sb-about" style="width:420px;text-align:center">
       <h2 style="font-size:22px;letter-spacing:6px">NEO</h2>
-      <p class="about-version">${t('Version {version}', { version: v })}</p>
-      <p class="about-line">${t('A word processor for authors.')}</p>
+      <p class="sb-about-edition">${t('Series Bible Edition')}</p>
+      <p class="about-version">${neo ? t('Version {version} · built on NEO {neo}', { version: v, neo }) : t('Version {version}', { version: v })}</p>
+      <p class="about-line">${t('NEO is a word processor for authors by Hugh Howey, free and open source.')}
+        <a href="#" data-sb-link="neo">${t('NEO by Hugh Howey')}</a></p>
+      <p class="about-line">${t('This edition adds The Plot Dude’s Series Bible. It is made by Troy Lambert, not by Hugh, so questions about the Series Bible tabs go to The Plot Abides.')}
+        <a href="#" data-sb-link="help">${t('Series Bible help')}</a></p>
       <div style="margin-top:16px">
         <button class="m-ok btn-gold">${t('Back to writing')}</button>
       </div>
     </div>`;
   document.body.appendChild(bd);
   const close = () => bd.remove();
+  for (const a of bd.querySelectorAll('[data-sb-link]')) {
+    a.onclick = (e) => { e.preventDefault(); window.neo.seriesBibleLink(a.dataset.sbLink); };
+  }
   bd.querySelector('.m-ok').onclick = close;
   bd.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); close(); } });
   bd.querySelector('.m-ok').focus();

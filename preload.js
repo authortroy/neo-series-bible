@@ -58,6 +58,8 @@ contextBridge.exposeInMainWorld('neo', {
   spellLearn: (word) => ipcRenderer.invoke('spell:learn', word),
   setSpellLanguage: (code) => ipcRenderer.invoke('spell:setLanguage', code),
   appVersion: () => ipcRenderer.invoke('app:version'),
+  // SERIES BIBLE EDITION: a link by name ('help', 'app', 'neo'); see series-bible-companion.js
+  seriesBibleLink: (key) => ipcRenderer.invoke('seriesBible:link', key),
   openRelease: () => ipcRenderer.invoke('update:openRelease'),
 
   poetryState: (on) => ipcRenderer.send('poetry:state', on),

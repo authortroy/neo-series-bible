@@ -51,7 +51,7 @@ const writeBible = (over = {}) => {
       [ids[1]]: { title: 'Salt Road', summary: 'The convoy leaves at dawn; Ines hides the lantern in the lead truck.', updated: '2026-11-06T16:00:00Z' }
     },
     characters: [
-      { name: 'Ines Varga', role: 'protagonist', description: 'A salvage driver with a long memory.', physical: 'Tall, frost-scarred hands', personality: 'Stubborn', backstory: '', relationships: 'Sister of Pol', firstAppearance: 'Chapter 1', notes: '' },
+      { name: 'Ines Varga', role: 'protagonist', aliases: ['Inés', 'the Frostwalker'], description: 'A salvage driver with a long memory.', physical: 'Tall, frost-scarred hands', personality: 'Stubborn', backstory: '', relationships: 'Sister of Pol', firstAppearance: 'Chapter 1', notes: '' },
       { name: 'Pol Varga', role: 'supporting', description: 'Runs the weigh station.', physical: '', personality: '', backstory: '', relationships: '', firstAppearance: 'Chapter 3', notes: '' }
     ],
     locations: [{ name: 'The Ice House', type: 'building', description: 'Where the lantern waited.', significance: 'Opening image', firstAppearance: 'Chapter 1', notes: '' }],
@@ -117,7 +117,10 @@ test('Characters: every character, the role as a chip, empty fields left out', a
   assert.deepEqual(await js(`[...document.querySelectorAll('#bible-list .sb-name')].map((e) => e.textContent)`), ['Ines Varga', 'Pol Varga']);
   assert.deepEqual(await js(`[...document.querySelectorAll('#bible-list .sb-chip')].map((e) => e.textContent)`), ['protagonist', 'supporting']);
   const first = await js(`[...document.querySelectorAll('#bible-list .sb-entry')[0].querySelectorAll('.sb-k')].map((e) => e.textContent)`);
-  assert.deepEqual(first, ['Looks', 'Personality', 'Relationships', 'First appears']);
+  assert.deepEqual(first, ['Also known as', 'Looks', 'Personality', 'Relationships', 'First appears']);
+  // the names merged into her (Series Bible 1.5.0), on one line; none for Pol, so no line
+  assert.equal(await js(`document.querySelectorAll('#bible-list .sb-entry')[0].querySelector('.sb-v').textContent`), 'Inés, the Frostwalker');
+  assert.equal(await js(`[...document.querySelectorAll('#bible-list .sb-entry')[1].querySelectorAll('.sb-k')].some((e) => e.textContent === 'Also known as')`), false);
   assert.match(await js(`document.querySelector('.sb-from').textContent`), /view only/);
   await shot('bible-characters');
 });
@@ -221,6 +224,28 @@ test('Ask: typing in the search box searches the bible (and only types)', async 
   assert.deepEqual(hits, ['characters:Ines Varga', 'characters:Pol Varga']);
   assert.equal(await js(`document.querySelectorAll('#sb-search-results mark').length >= 2`), true);
   assert.equal(await js('JSON.stringify(book.chapterOrder)'), before, 'the manuscript is untouched');
+});
+
+test('Ask: a name a character also goes by finds her', async () => {
+  await js(`(() => { const i = document.getElementById('sb-search'); i.value = 'frostwalker'; i.dispatchEvent(new Event('input')); })()`);
+  await tick(300);
+  const hits = await js(`[...document.querySelectorAll('#sb-search-results .sb-hit')].map((h) => h.dataset.kind + ':' + h.querySelector('.sb-hit-name').textContent)`);
+  assert.deepEqual(hits, ['characters:Ines Varga']);
+});
+
+test('About says whose work is whose: NEO is Hugh Howey\'s, the Series Bible is The Plot Dude\'s', async () => {
+  await js('showAbout()');
+  await tick(200);
+  const text = await js(`document.querySelector('.sb-about').textContent.replace(/\\s+/g, ' ')`);
+  assert.match(text, /Series Bible Edition/);
+  assert.match(text, /built on NEO \d+\.\d+\.\d+/);
+  assert.match(text, /Hugh Howey/);
+  assert.match(text, /Troy Lambert, not by Hugh/);
+  assert.deepEqual(await js(`[...document.querySelectorAll('.sb-about [data-sb-link]')].map((a) => a.dataset.sbLink)`), ['neo', 'help']);
+  await shot('about');
+  await js(`document.querySelector('.sb-about .m-ok').click()`);
+  await tick(100);
+  assert.equal(await js(`!!document.querySelector('.sb-about')`), false);
 });
 
 test('Ask: search finds chapter summaries, events and places, every word, any accents', async () => {

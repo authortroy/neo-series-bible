@@ -7,6 +7,10 @@ This is Hugh Howey's NEO (MIT license) with The Plot Dude's Series Bible built i
 - **Characters, Locations and Events tabs** after Darlings, for any book whose folder holds a `series-bible.json`. They are view only; the bible is edited in the Series Bible app. Find (⌘F) searches them.
 - **"Series Bible Summary of What You Wrote"** on each chapter that has an AI summary: on its outline card (short label "Series Bible" while the card is closed, the full label when it is open), under its line in the outline's List view, and on the chapter's card in the pane beside the page. It sits under the writer's own note and never changes it.
 - **Ask tab**, after Events. A search box finds characters, locations, events and chapter summaries in `series-bible.json` (every word, any accents), on any computer, offline; a result opens its entry or its chapter. Below it, questions about the open book go to The Plot Dude's Series Bible (1.4.0 or later) when it runs on the same computer; it answers from the bible first and reads the manuscript only if it has to. The app leaves a small file only on that computer (`~/Library/Application Support/PlotDude/series-bible-bridge.json`: port and a token); the book is named by its NEO folder, the same on every Mac. Without the app the tab says so and searching still works. Answers are kept while NEO is open, never written to the book.
+- **"Also known as"** on a character or location that has other names (Series Bible 1.5.0 and later: `aliases` in `series-bible.json`), under the name, as the Series Bible app shows it. Ask's search finds an entry by any of its names.
+- **Help in two sections**, so each question goes to the right person: *Help with NEO* (shortcuts, NEO Pocket, and Hugh Howey's NEO page) and *Help with the Series Bible* (the help and install guide, and where to get the Series Bible app, both at theplotabides.com). **About** says the same: NEO is Hugh Howey's; this edition is Troy Lambert's.
+- **A one-time welcome** for someone who doesn't have the Series Bible app yet, saying what the extra tabs need.
+- **Update notices for both apps.** Each app updates itself. Each also leaves a small file beside the bridge file saying which version is installed (`installed-neo-series-bible.json` here; `installed-series-bible.json` from Series Bible 1.5.1 on). When this build sees that the Series Bible app's update feed has a newer version than the copy on this computer, it says so once and offers to open that app, which is all it needs to update itself. The Series Bible app does the same for this one. All of this is in `series-bible-companion.js`.
 - NEO never writes `series-bible.json`. It reads it when a book opens and on every refresh (window focus, and every 30 seconds), so new summaries appear without reopening the book.
 
 ## Its own app, and its own updates
@@ -56,16 +60,21 @@ Every change is marked **SERIES BIBLE EDITION**.
 | `app.js` | The `SERIES BIBLE` section (just before `STRUCTURED OUTLINE`), plus small hooks in `openBook`, `backToShelf`, `refreshFromDisk`, `switchTab`, `renderOutline`, `renderBoard`, `chapterCard`, `sideCardsUpdate`, `searchRoots` and the tab keys |
 | `index.html`, `pocket/www/index.html` | Three hidden tabs and `#bible-list` |
 | `styles.css` | One block at the end |
-| `main.js` | Updates and the release link from `authortroy/neo-series-bible`; NEO's settings folder |
+| `main.js` | Updates and the release link from `authortroy/neo-series-bible`; NEO's settings folder; the Help menu's two sections; starts `series-bible-companion.js` |
+| `series-bible-companion.js` (new) | The companion app: installed files, both apps' update notices, the welcome note, the Help links |
+| `preload.js` | `seriesBibleLink` (a link by name, for About) |
+| `README.md`, `.gitattributes` | This fork's own README, kept ours on merge |
 | `package.json` | Set by `scripts/series-bible-identity.js` |
 | `.github/workflows/` | `follow-neo.yml` (new), `build.yml` (publishes), `pocket.yml` (by hand only) |
 | `scripts/series-bible.e2e.js` | End-to-end tests (`npm run test:series-bible`; `NEO_SHOT=dir` saves screenshots) |
+| `scripts/series-bible-companion.test.js` | The companion module's tests (run by `npm test`) |
 
 ## Merging NEO by hand (when the daily job asks for a hand)
 
 ```
 git remote add upstream https://github.com/hughhowey/neo.git   # once, if it isn't there
 git fetch upstream --tags
+git config merge.ours.driver true        # once: README.md stays this fork's (.gitattributes)
 git merge v1.6.4                       # the NEO release named in the issue
 # fix the conflicts; for package.json and package-lock.json just take NEO's:
 git checkout --theirs package.json package-lock.json

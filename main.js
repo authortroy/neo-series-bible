@@ -8,6 +8,8 @@ const { app, BrowserWindow, ipcMain, dialog, Menu, MenuItem, utilityProcess, scr
 // electron-updater reads them from package.json's build.publish, and the
 // fallback and the release link below read the same repository.
 const RELEASES_REPO = 'authortroy/neo-series-bible';
+// (the companion app, the welcome note, both apps' update notices, the Help links)
+const seriesBibleCompanion = require('./series-bible-companion.js');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -2972,7 +2974,7 @@ function buildMenu() {
     ...(isMac ? [{
       role: 'appMenu',
       submenu: [
-        { role: 'about', label: t('About NEO') },
+        { label: t('About NEO Series Bible'), click: () => sendToWindow({ type: 'about' }) }, // SERIES BIBLE EDITION
         { type: 'separator' },
         { role: 'services', label: t('Services') },
         { type: 'separator' },
@@ -3338,8 +3340,11 @@ function buildMenu() {
       ]
     },
     {
+      // SERIES BIBLE EDITION: two kinds of help, kept apart. NEO is Hugh
+      // Howey's, and its help is his; the Series Bible is The Plot Dude's.
       label: t('Help'),
       submenu: [
+        { label: t('Help with NEO'), enabled: false },
         {
           label: t('NEO Shortcuts'),
           click: () => sendToWindow({ type: 'help' })
@@ -3348,14 +3353,32 @@ function buildMenu() {
           label: t('NEO for iPad and iPhone…'),
           click: () => { showPocketInfo().catch((err) => logError('pocket info', err)); }
         },
+        {
+          label: t('NEO by Hugh Howey…'),
+          click: () => { require('electron').shell.openExternal(seriesBibleCompanion.LINKS.neo); }
+        },
+        { type: 'separator' },
+        { label: t('Help with the Series Bible'), enabled: false },
+        {
+          label: t('Series Bible Help and Install Guide…'),
+          click: () => { require('electron').shell.openExternal(seriesBibleCompanion.LINKS.help); }
+        },
+        {
+          label: t('Get the Series Bible App…'),
+          click: () => { require('electron').shell.openExternal(seriesBibleCompanion.LINKS.app); }
+        },
         { type: 'separator' },
         {
-          label: t('About NEO'),
+          label: t('About NEO Series Bible'),
           click: () => sendToWindow({ type: 'about' })
         },
         {
           label: t('Check for Update…'),
-          click: () => sendToWindow({ type: 'checkUpdate' })
+          click: () => {
+            sendToWindow({ type: 'checkUpdate' });
+            // (the Series Bible app's version too: see series-bible-companion.js)
+            Promise.resolve(seriesBibleCompanion.checkNow()).catch((err) => logError('series bible companion', err));
+          }
         }
       ]
     }
@@ -3772,6 +3795,13 @@ app.whenReady().then(() => {
     // that failed); an existing day's zip makes this a no-op
     setInterval(() => { dailyBackup().catch(() => {}); }, 60 * 60 * 1000).unref?.();
     try { checkForUpdates(); } catch (err) { logError('updater', err); }
+    // SERIES BIBLE EDITION: the companion app (see series-bible-companion.js)
+    try {
+      seriesBibleCompanion.start({
+        app, dialog, shell: require('electron').shell, ipcMain, t, logError,
+        getWindow: () => BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0] || null
+      });
+    } catch (err) { logError('series bible companion', err); }
     setTimeout(() => { fetchLibraryFromICloud().catch((err) => logError('icloud', err)); }, 60000).unref?.();
   } catch (err) {
     // catastrophic: tell the human instead of dying in silence
